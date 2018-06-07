@@ -1,7 +1,9 @@
 # -*- coding: UTF-8 -*-
 import random
 import time
-import socket
+from socket import *
+import urllib, urllib2
+import random
 
 trytimes = 100000
 shape = [
@@ -75,6 +77,8 @@ class Game:
                 print ""
         elif type == "color":
             pass
+        elif type == "line":
+            print self.map
         else:
             print "unknow type"
 
@@ -136,11 +140,171 @@ class Game:
             print "%d" % (i),
             for j in range(0, 10):
                 if (data[i][j], self.map[i][j]) == (1, 1):
-                    print "■", #means body shot
+                    print "■",  # means body shot
                 elif (data[i][j], self.map[i][j]) == (2, 1):
-                    print "☻", #means head shot
+                    print "☻",  # means head shot
                 elif (data[i][j], self.map[i][j]) == (1, 0):
-                    print "□", #means miss
+                    print "□",  # means miss
                 else:
-                    print " ", #means not open
+                    print " ",  # means not open
             print ""
+
+
+# 遍历所有局面:C(100,4)*4^4=3921225*256=10,0383,3600
+def genAll():
+    for p1 in range(97):
+        for p2 in range(p1 + 1, 98):
+            for p3 in range(p2 + 1, 99):
+                for p4 in range(p3 + 1, 100):
+                    # print p1, p2, p3, p4
+                    for d1 in range(4):
+                        for d2 in range(4):
+                            for d3 in range(4):
+                                for d4 in range(4):
+                                    isOk([p1, p2, p3, p4], [d1, d2, d3, d4])
+
+
+# 判断一个局面是否合法(合法的只有150456个)
+def isOk(p, d):
+    map = [0] * 10
+    for i in range(10):
+        map[i] = [0] * 10
+
+    for i in range(4):
+        # 头部坐标
+        x = p[i] / 10
+        y = p[i] % 10
+        dir = d[i]
+        for dx, dy in shape[dir]:
+            rx = x + dx
+            ry = y + dy
+            if rx < 0 or rx > 9 or ry < 0 or ry > 9 or map[rx][ry] == 1:
+                return p, d, "error"
+            else:
+                map[rx][ry] = 1
+    return p, map
+
+
+# 根据已有局面从服务端获取机头最大概率点
+thre = 0
+
+
+def getNext(v0, v1, h, step, debug=0):
+    # if len(h) == 0 and (len(v0) + len(v1)) == 0:
+    #     return "3d"
+    # if len(h) == 0 and (len(v0), len(v1)) == (1, 0):
+    #     return "2d"
+    # if len(h) == 0 and (len(v0), len(v1)) == (0, 1):
+    #     return "0c"
+    url = "http://localhost/data.php"
+    if step < 6:
+        url = "http://localhost/data_new.php"
+    else:
+        url = "http://localhost/data.php"
+
+    try:
+        v0_str = ""
+        v1_str = ""
+        h_str = ""
+        for i in v0:
+            x = int(i[0])
+            y = ord(i[1]) - ord('a')
+            v0_str = v0_str + ",d" + str(x * 10 + y)
+        for i in v1:
+            x = int(i[0])
+            y = ord(i[1]) - ord('a')
+            v1_str = v1_str + ",d" + str(x * 10 + y)
+        for i in h:
+            h_str = h_str + "," + str(i)
+        if v0_str != "":
+            v0_str = v0_str[1:]
+        if v1_str != "":
+            v1_str = v1_str[1:]
+        if h_str != "":
+            h_str = h_str[1:]
+        bigurl = "%s?v0=%s&v1=%s&h=%s" % (url, v0_str, v1_str, h_str)
+        if debug == 1:
+            print bigurl + "&debug"
+        req = urllib2.Request(url=bigurl)
+        res_data = urllib2.urlopen(req)
+        res = res_data.read()
+        return res
+    except:
+        print "err"
+        return None
+
+
+def getAnser(host='localhost', port=9000, data="test"):
+    BUFSIZE = 1024
+    udpCliSock = socket(AF_INET, SOCK_DGRAM)
+    ADDR = (host, port)
+
+    tcpCliSock = socket(AF_INET, SOCK_STREAM)
+    tcpCliSock.connect(ADDR)
+
+    tcpCliSock.send(data)
+    ret = tcpCliSock.recv(BUFSIZE)
+    tcpCliSock.close()
+    return ret
+
+
+# 获取飞机的可能方向，暂时支持一个
+def getPossibleDir(v1, h):
+    podi = []  # 可能的方向
+    pass
+
+#search_server的替代方案，读入内存
+class Database:
+    def __init__(self):
+        fd = open('data0', 'r')
+        temp = fd.readlines()
+        self.DB = []
+        fd.close()
+        for i in temp:
+            map = i[-200:].replace(" ", "")
+            h = i[:-200].split()
+            random.seed(time.time())
+
+            self.DB.append([h, map])
+
+    def getRandomGame(self):
+        i = random.randint(0, len(self.DB))
+        return self.DB[i]
+
+    def searchForNextMove(self, v0, v1, h):
+        ok = 0
+        tmp = [0] * 100
+        for i in self.DB:
+            falt = False
+            for j in v0:
+                if i[1][int(j[0]) * 10 + (ord(j[1]) - ord('a'))] == "1":
+                    falt = True
+                    break;
+                if falt:
+                    break;
+            if falt:
+                continue
+
+            for j in v1:
+                if i[1][int(j[0]) * 10 + (ord(j[1]) - ord('a'))] == "0":
+                    falt = True
+                    break;
+                if falt:
+                    break;
+            if falt:
+                continue
+
+            for j in h:
+                if h in i[0]:
+                    falt = True
+                    break
+            if falt:
+                continue
+
+            ok = ok + 1
+            for j in i[0]:
+                tmp[int(j)] = tmp[int(j)] + 1
+        ret_ind = tmp.index(max(tmp))
+        p1 = str(int((ret_ind / 10)))
+        p2 = chr(ret_ind % 10 + ord('a'))
+        return p1 + p2
